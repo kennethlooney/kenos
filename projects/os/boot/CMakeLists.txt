@@ -13,6 +13,6 @@ set_target_properties(boot PROPERTIES OUTPUT_NAME "BOOTX64")
 add_custom_command(
     TARGET boot POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E echo "Running post build scripts..."
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/../../image/efi/boot
-    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:boot> ${CMAKE_BINARY_DIR}/../../image/efi/boot
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/../image/efi/boot
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:boot> ${CMAKE_BINARY_DIR}/../image/efi/boot
 )
