@@ -1,1 +1,1 @@
-add_subdirectory(gpt)
+add_subdirectory(diskformats)

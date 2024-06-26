@@ -1,5 +1,5 @@
 add_executable(createdisk main.c)
-target_link_libraries(createdisk PUBLIC gpt)
+target_link_libraries(createdisk PUBLIC diskformats)
 add_custom_command(
     TARGET createdisk POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E echo "Running post build scripts..."
