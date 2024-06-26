@@ -1,7 +1,9 @@
 #include <stdio.h>
+#include "efi/efi.h"
 
 int main(int argc, char** argv)
 {
-    printf("TESTING\n");
+    int c = add_test(10,10);
+    printf("Answer = %d\n", c);
     return 0;
 }

@@ -27,7 +27,12 @@ typedef VOID* EFI_HANDLE;
 #define OPTIONAL
 #define CONST const
 
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__)
+#define EFIAPI
+#else
 #define EFIAPI __attribute__((ms_abi))  // x86_64 Microsoft calling convention
+
+#endif
 
 // UEFI Status codes
 #define EFI_SUCCESS 0
@@ -41,12 +46,7 @@ typedef struct {
     CHAR16  UnicodeChar;
 } EFI_INPUT_KEY;
 
-typedef 
-EFI_STATUS 
-(EFIAPI *EFI_INPUT_READ_KEY) (
- IN  EFI_SIMPLE_TEXT_INPUT_PROTOCOL  *This, 
- OUT EFI_INPUT_KEY                   *Key
-);
+typedef EFI_STATUS (EFIAPI *EFI_INPUT_READ_KEY) (IN  EFI_SIMPLE_TEXT_INPUT_PROTOCOL  *This, OUT EFI_INPUT_KEY *Key);
 
 typedef struct EFI_SIMPLE_TEXT_INPUT_PROTOCOL {
     void*               Reset;
@@ -176,3 +176,5 @@ typedef struct {
 	UINTN                           NumberOfTableEntries;
 	void*                           ConfigurationTable;
 } EFI_SYSTEM_TABLE;
+
+int add_test(int a, int b);
