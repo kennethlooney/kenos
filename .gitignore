@@ -13,3 +13,4 @@ build/
 image/
 tools/*
 *.efi
+*.img
