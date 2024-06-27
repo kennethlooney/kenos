@@ -1,4 +1,7 @@
-add_executable(createdisk main.c)
+file(GLOB SOURCES "src/*.c")
+
+add_executable(createdisk ${SOURCES})
+target_link_libraries(createdisk PUBLIC common)
 
 add_custom_command(
     TARGET createdisk POST_BUILD
