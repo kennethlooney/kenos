@@ -13,92 +13,145 @@
 const Guid ESP_GUID = {0xC12A7328, 0xF81F, 0x11D2, 0xBA, 0x4B, {0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B}};
 const Guid BASIC_DATA_GUID = {0xEBD0A0A2, 0xB9E5, 0x4433, 0x87, 0xC0, {0x68, 0xB6, 0xB7, 0x26, 0x99, 0xC7}};
 
-
-char* image_name = "disk.img";
+char *image_name = "disk.img";
 uint64_t lba_size = 512;
-uint64_t esp_size = 1024*1024*33;       // 33mb
-uint64_t data_size = 1024*1024*1;       // 1mb
+uint64_t esp_size = 1024 * 1024 * 33; // 33mb
+uint64_t data_size = 1024 * 1024 * 1; // 1mb
 uint64_t image_size = 0;
 
 uint64_t esp_size_lbas = 0, data_size_lbas = 0, image_size_lbas = 0, gpt_table_lbas = 0; // Sizes in LBAs
-uint64_t align_lba = 0, esp_lba = 0, data_lba = 0;  // Starting LBA values
+uint64_t align_lba = 0, esp_lba = 0, data_lba = 0;                                       // Starting LBA values
 
-
-
-
-
-
-
-
-bool write_mbr(FILE* image);
+bool write_mbr(FILE *image);
 uint64_t bytes_to_lbas(const uint64_t bytes);
-void write_full_lba_size(FILE* image);
-bool write_gpts(FILE* image);
-bool write_esp(FILE* image);
-
+void write_full_lba_size(FILE *image);
+bool write_gpts(FILE *image);
+bool write_esp(FILE *image);
 
 //======================================================================================================
 // main
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
-    FILE* image = fopen(image_name, "wb+");
-    if(!image) {
+    FILE *image = fopen(image_name, "wb+");
+    if (!image)
+    {
         fprintf(stderr, "Error: could not open file %s\n", image_name);
         return EXIT_FAILURE;
-    } 
+    }
 
     // Set sizes & LBA values
     gpt_table_lbas = GPT_TABLE_SIZE / lba_size;
-    const uint64_t padding = (ALIGNMENT*2 + (lba_size * ((gpt_table_lbas*2) + 1 + 2)));
-    image_size = esp_size + data_size + padding;    // Add some extra padding for GPTs/MBR
+    const uint64_t padding = (ALIGNMENT * 2 + (lba_size * ((gpt_table_lbas * 2) + 1 + 2)));
+    image_size = esp_size + data_size + padding; // Add some extra padding for GPTs/MBR
     image_size_lbas = bytes_to_lbas(image_size);
     align_lba = ALIGNMENT / lba_size;
     esp_lba = align_lba;
     esp_size_lbas = bytes_to_lbas(esp_size);
     data_size_lbas = bytes_to_lbas(data_size);
     data_lba = next_aligned_lba(align_lba, esp_lba + esp_size_lbas);
-   
+
     // Seed random number generator
     srand(time(NULL));
 
     // Write Protective MBR
-    if(!write_mbr(image)) {
+    if (!write_mbr(image))
+    {
         fprintf(stderr, "Error: could not write protective MBR to file %s\n", image_name);
         return EXIT_FAILURE;
     }
 
     // Write GPT headers & tables
-     if(!write_gpts(image)) {
+    if (!write_gpts(image))
+    {
         fprintf(stderr, "Error: could not write GPT headers and tables to file %s\n", image_name);
         return EXIT_FAILURE;
     }
 
     // Write EFI System Partition w/FAT32 filesystem
-    if(!write_esp(image)) {
+    if (!write_esp(image))
+    {
         fprintf(stderr, "Error: could not write FAT32 filesystem to ESP for file %s\n", image_name);
         return EXIT_FAILURE;
     }
 
-    
-    
     printf("Created disk image '%s'\n", image_name);
 
     return EXIT_SUCCESS;
 }
- 
+
 //=======================================================================================================
 // write_esp
-bool write_esp(FILE* image)
+bool write_esp(FILE *image)
 {
-    // Left off: https://youtu.be/dxDbb87h-Ro?list=PLT7NbkyNWaqZYHNLtOZ1MNxOt8myP5K0p&t=1272
+    // Reserved sectors region -------------------------------
+    // Fill out volume boot record
+    const uint8_t reserved_sectors = 32; // FAT32
+    Vbr vbr = {
+        .BS_jmpBoot = {0xEB, 0x00, 0x90},
+        .BS_OEMName = {"  KENOS "},
+        .BPB_BytesPerSec = lba_size,                            // This is limited to only 512/1024/2048/4096
+        .BPB_SecPerClus =  1,
+        .BPB_RsvdSecCnt =  reserved_sectors,
+        .BPB_NumFATs =     2,
+        .BPB_RootEntCnt =  0,
+        .BPB_TotSec16 =    0,
+        .BPB_Media =       0xF8,                                // Flash: 0xF0
+        .BPB_FATSz16 =     0,
+        .BPB_SecPerTrk =   0,
+        .BPB_NumHeads =    0,
+        .BPB_HiddSec =     esp_lba - 1,                         // # of sectors before this partition/volume
+        .BPB_TotSec32 =    esp_size_lbas,                       // Size of this partition
+        .BPB_FATSz32 =     (align_lba - reserved_sectors) / 2,  // Align data region on alignment value
+        .BPB_ExtFlags =    0,                                   // Mirrored FATs
+        .BPB_FSVer =       0,
+        .BPB_RootClus =    2,                                   // Clusters 0 & 1 are reserved; root dir cluster starts at 2
+        .BPB_FSInfo =      1,                                   // Sector 0 = this VBR; FS Info sector follows it
+        .BPB_BkBootSec =   6,
+        .BPB_Reserved = {0},
+        .BS_DrvNum =    0x80,
+        .BS_Reserved1 = 0,
+        .BS_BootSig =   0x29,
+        .BS_VolID = {0},
+        .BS_VolLab = {"NO NAME    "},
+        .BS_FilSysType = {"FAT32   "},
+        // Not in fatgen103.doc tables
+        .boot_code = {0},
+        .bootsect_sig = 0xAA55 };
+
+    // TODO: Fill out file system info sector
+
+    // TODO: Write VBR and FSInfo sector
+    fseek(image, esp_lba * lba_size, SEEK_SET);
+    if(fwrite(&vbr, 1, sizeof vbr, image) != sizeof vbr) {
+         fprintf(stderr, "Error: could not write VBR to disk image '%s'\n", image_name);
+        return false;
+    }
+    write_full_lba_size(image);
+    
+    // Go to backup boot sector location
+    fseek(image, (esp_lba + vbr.BPB_BkBootSec) * lba_size, SEEK_SET);
+
+    // TODO: Write VBR and FSInfo at backup sector location
+      fseek(image, esp_lba * lba_size, SEEK_SET);
+    if(fwrite(&vbr, 1, sizeof vbr, image) != sizeof vbr) {
+         fprintf(stderr, "Error: could not write VBR to disk image '%s'\n", image_name);
+        return false;
+    }
+    write_full_lba_size(image);
+    //  FAT region -------------------------------
+    // TODO: Write FATs
+    //  Data region -------------------------------
+    // TODO: Write file data...
+
     return true;
 }
 //=======================================================================================================
 // write_mbr
-bool write_mbr(FILE* image)
+bool write_mbr(FILE *image)
 {
     uint64_t mbr_image_lbas = image_size_lbas;
-    if(mbr_image_lbas > 0xFFFFFFFF) mbr_image_lbas = 0x100000000;
+    if (mbr_image_lbas > 0xFFFFFFFF)
+        mbr_image_lbas = 0x100000000;
 
     Mbr mbr = {
         .boot_code = {0},
@@ -106,25 +159,24 @@ bool write_mbr(FILE* image)
         .unknown = 0,
         .partition[0] = {
             .boot_indicator = 0,
-            .starting_chs = {0x00,0x02,0x00},
-            .os_type = 0xEE,    // Protective GPT
-            .ending_chs = {0xFF,0xFF,0xFF},
+            .starting_chs = {0x00, 0x02, 0x00},
+            .os_type = 0xEE, // Protective GPT
+            .ending_chs = {0xFF, 0xFF, 0xFF},
             .starting_lba = 0x00000001,
             .size_lba = mbr_image_lbas - 1,
-            
+
         },
         .boot_signature = 0xAA55,
 
     };
-    // Write to disk image 
-    if(fwrite(&mbr, 1, sizeof mbr, image) != sizeof mbr)
+    // Write to disk image
+    if (fwrite(&mbr, 1, sizeof mbr, image) != sizeof mbr)
         return false;
-     
+
     write_full_lba_size(image);
 
     return true;
 }
- 
 
 //=======================================================================================================
 // bytes_to_lbas
@@ -132,41 +184,37 @@ uint64_t bytes_to_lbas(const uint64_t bytes)
 {
     return (bytes / lba_size) + (bytes % lba_size > 0 ? 1 : 0);
 }
- 
 
 //=======================================================================================================
 // write_full_lba_size
-void write_full_lba_size(FILE* image)
+void write_full_lba_size(FILE *image)
 {
     uint8_t zero_sector[512];
-    for(uint8_t i = 0; i < (lba_size - sizeof zero_sector) / sizeof zero_sector; i++)
+    for (uint8_t i = 0; i < (lba_size - sizeof zero_sector) / sizeof zero_sector; i++)
         fwrite(zero_sector, sizeof zero_sector, 1, image);
-
 }
-
-
 
 //=======================================================================================================
 // write_gpts
-bool write_gpts(FILE* image)
+bool write_gpts(FILE *image)
 {
-     // Fill out primary GPT header
+    // Fill out primary GPT header
     Gpt_Header primary_gpt = {
-        .signature = { "EFI PART" },
-        .revision = 0x00010000,   // Version 1.0
+        .signature = {"EFI PART"},
+        .revision = 0x00010000, // Version 1.0
         .header_size = 92,
-        .header_crc32 = 0,      // Will calculate later
+        .header_crc32 = 0, // Will calculate later
         .reserved_1 = 0,
-        .my_lba = 1,            // LBA 1 is right after MBR
+        .my_lba = 1, // LBA 1 is right after MBR
         .alternate_lba = image_size_lbas - 1,
-        .first_usable_lba = 1 + 1 + gpt_table_lbas, // MBR + GPT header + primary gpt table
+        .first_usable_lba = 1 + 1 + gpt_table_lbas,                  // MBR + GPT header + primary gpt table
         .last_usable_lba = image_size_lbas - 1 - gpt_table_lbas - 1, // 2nd GPT header + table
         .disk_guid = new_guid(),
-        .partition_table_lba = 2,   // After MBR + GPT header
-        .number_of_entries = 128,   
+        .partition_table_lba = 2, // After MBR + GPT header
+        .number_of_entries = 128,
         .size_of_entry = 128,
         .partition_table_crc32 = 0, // Will calculate later
-        .reserved_2 = { 0 },
+        .reserved_2 = {0},
     };
 
     // Fill out primary table partition entries
@@ -183,7 +231,7 @@ bool write_gpts(FILE* image)
 
         // Basic Data Paritition
         {
-            .partition_type_guid  = BASIC_DATA_GUID,
+            .partition_type_guid = BASIC_DATA_GUID,
             .unique_guid = new_guid(),
             .starting_lba = data_lba,
             .ending_lba = data_lba + data_size_lbas,
@@ -220,7 +268,7 @@ bool write_gpts(FILE* image)
 
     // Go to position of secondary table
     fseek(image, secondary_gpt.partition_table_lba * lba_size, SEEK_SET);
-    
+
     // Write secondary gpt table to file
     if (fwrite(&gpt_table, 1, sizeof gpt_table, image) != sizeof gpt_table)
         return false;
@@ -232,4 +280,3 @@ bool write_gpts(FILE* image)
 
     return true;
 }
- 
