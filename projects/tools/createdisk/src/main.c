@@ -2,6 +2,7 @@
 #include <system/formats/disk/gpt.h>
 #include <system/common/guid.h>
 #include <system/common/utils.h>
+#include <system/formats/disk/fat.h>
 
 // std
 #include <stdio.h>
@@ -33,7 +34,7 @@ bool write_mbr(FILE* image);
 uint64_t bytes_to_lbas(const uint64_t bytes);
 void write_full_lba_size(FILE* image);
 bool write_gpts(FILE* image);
-
+bool write_esp(FILE* image);
 
 
 //======================================================================================================
@@ -47,7 +48,8 @@ int main(int argc, char** argv)
     } 
 
     // Set sizes & LBA values
-    const uint64_t padding = (ALIGNMENT*2 + (lba_size * 67));
+    gpt_table_lbas = GPT_TABLE_SIZE / lba_size;
+    const uint64_t padding = (ALIGNMENT*2 + (lba_size * ((gpt_table_lbas*2) + 1 + 2)));
     image_size = esp_size + data_size + padding;    // Add some extra padding for GPTs/MBR
     image_size_lbas = bytes_to_lbas(image_size);
     align_lba = ALIGNMENT / lba_size;
@@ -55,7 +57,7 @@ int main(int argc, char** argv)
     esp_size_lbas = bytes_to_lbas(esp_size);
     data_size_lbas = bytes_to_lbas(data_size);
     data_lba = next_aligned_lba(align_lba, esp_lba + esp_size_lbas);
-    gpt_table_lbas = GPT_TABLE_SIZE / lba_size;
+   
     // Seed random number generator
     srand(time(NULL));
 
@@ -71,7 +73,11 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-
+    // Write EFI System Partition w/FAT32 filesystem
+    if(!write_esp(image)) {
+        fprintf(stderr, "Error: could not write FAT32 filesystem to ESP for file %s\n", image_name);
+        return EXIT_FAILURE;
+    }
 
     
     
@@ -80,7 +86,13 @@ int main(int argc, char** argv)
     return EXIT_SUCCESS;
 }
  
-
+//=======================================================================================================
+// write_esp
+bool write_esp(FILE* image)
+{
+    // Left off: https://youtu.be/dxDbb87h-Ro?list=PLT7NbkyNWaqZYHNLtOZ1MNxOt8myP5K0p&t=1272
+    return true;
+}
 //=======================================================================================================
 // write_mbr
 bool write_mbr(FILE* image)

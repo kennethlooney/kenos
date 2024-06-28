@@ -17,5 +17,5 @@ add_custom_command(
 # Copy the output to the test image directory
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:boot> ${CMAKE_BINARY_DIR}/../image/efi/boot
 # Copy the output to the root of the project so it gets noticed by the createdisk tool.
-#    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:boot> ${CMAKE_BINARY_DIR}/../
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:boot> ${CMAKE_BINARY_DIR}/../
 )
